@@ -25,171 +25,175 @@ def close_connection(sock1=None, sock2=None):
     if sock2 != None:
         sock2.close()
 
-def parse_packet(msg_packet):
-    
-    # parse the msg_packet received from server
+def parse_data(data, delim=' '):
     fields = []
     temp = ""
-    for i in range(0, len(msg_packet)):
-        if msg_packet[i] == "\n":
+    for i in range(0, len(data)):
+        if data[i] == delim:
             if temp != "":
                 fields.append(temp)
                 temp = ""
         else:
-            temp = temp + msg_packet
+            temp = temp + data[i]
     if temp != "":
         fields.append(temp)
-    
-    # return parsed fields
     return fields
 
 def send_message(sock_send):
     
+    # print welcome message
     print("Welcome to Datagram!")
-    print("To quit Datagram, type \"QUIT\" in the prompt below.")
-    
-    # loop until QUIT
+    print("Enter your message after \">\" icon. Use \"@[user]\" to ping a particular member or \"@ALL\" to broadcast message to all members.")
+
+    # loop forever
     while True:
-        chat_message = input("Enter your message. Use \"@ [user]\" to ping a particular member or \"@ALL\" to broadcast message to all members.")
-        if chat_message == "QUIT":
-            # quit
-            break
+        # user prompt
+        chat_message = input("> ")
+        # check if message is valid
         if chat_message == "" or chat_message[0] != "@":
             # incorrect message format
             continue
         
-        # valid message, parse recipient name and message
+        # valid message, parse data to get recipient name and message
         recp_name = ""
         message = ""
-        flag = False
+        switch = False
         for i in range(1, len(chat_message)):
-            if chat_message[i] == " ":
-                flag = True
-            elif flag:
+            if switch:
                 message = message + chat_message[i]
+            elif chat_message[i] == " ":
+                switch = True
             else:
                 recp_name = recp_name + chat_message[i]
         
         # send message to server
         content_length = len(message.encode())
-        msg_packet = "SEND " + recp_name + "\nContent-length: " + str(content_length) + "\n\n" + message
-        sock_send.send(msg_packet.encode())
+        send_message = "SEND " + recp_name + "\nContent-length: " + str(content_length) + "\n\n" + message
+        sock_send.send(send_message.encode())
         
         # wait for reply from server
-        ack_send = sock_send.recv(4096)
-        print(ack_send.decode())
-        if ack_send.decode() == "SENT " + recp_name + "\n\n":
-            print("SRVR: Message delivered to recipient successfully!")
+        ack_message = sock_send.recv(4096)
+        if ack_message.decode() == "SENT " + recp_name + "\n\n":
+            print("SUCCESS: Message delivered to recipient successfully!")
             continue
-        elif ack_send.decode() == "ERROR 102 Unable to send\n\n":
+        elif ack_message.decode() == "ERROR 102 Unable to send\n\n":
             # server was unable to find recipient
-            print("RCPT ERROR: Server was unable to find the requested recipient. Verify recipient name and please try again.")
+            print("FAILURE: Server was unable to find the recipient. Verify recipient name and please try again.")
             continue
-        elif ack_send.decode() == "ERROR 103 Header incomplete\n\n":
+        elif ack_message.decode() == "ERROR 103 Header Incomplete\n\n":
             # header was not fully specified
-            print("SRVR Error: Header information incomplete. Closing connection!")
-            break
+            print("FAILURE: Header information incomplete. Closing connection!")
+            continue
         else:
             # some unexpected error
             print("Error: Unexpected response from server. Closing connection!")
-            break
+            continue
     
     return
 
 def recv_message(sock_recv):
 
     while True:
-        # wait for FORWARDED messages from server
-        forwarded_message = sock_recv.recv(4096)
-        msg_packet = forwarded_message.decode()
-        print(msg_packet)
-        # parse the packet to extract sender and message
-        sendr_name = ""
-        message = ""
-        fields = parse_packet(msg_packet)
-        error = False
+        # wait for messages from server
+        incoming_message = sock_recv.recv(4096)
+        fields = parse_data(incoming_message.decode(), '\n')
+        
+        # check if header is complete
         if len(fields) < 3 or len(fields) > 3:
-            # error with header
+            # error in packet
+            sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
+            continue
+
+        # parse all header lines of message   
+        first_line = parse_data(fields[0])
+        second_line = parse_data(fields[1])
+        # store user message
+        user_message = fields[2]
+        
+        # set error flag
+        error = False
+
+        # check first line
+        if len(first_line) < 2 or len(first_line) > 2:
             error = True
         else:
-            if len(fields[0]) < 8 or fields[0][0:8] != "FORWARD ":
-                # error with header
+            if first_line[0] != "FORWARD":
                 error = True
             else:
-                sendr_name = fields[0][8:]
-                if sendr_name == "":
-                    # error with header
-                    error = True
-            if len(fields[1]) < 16 or fields[1][0:16] != "Content-length: ":
-                # error with header
+                sender_name = first_line[1]
+
+        # check second line
+        if len(second_line) < 2 or len(second_line) > 2:
+            error = True
+        else:
+            if second_line[0] != "Content-length:" or not second_line[1].isdigit():
                 error = True
             else:
-                temp = fields[1][16:]
-                if temp == "" or not temp.isdigit():
-                    # error with header
+                content_length = int(second_line[1])
+                # check if the content length is correct or not
+                if len(user_message.encode()) != content_length:
                     error = True
-                else:
-                    content_length = int(temp)
-            message = fields[2]
-        
-        # check for errors
+
+        # check for error
         if error:
             # send message to server
-            error_msg = "ERROR 103 Header Incomplete\n\n"
-            sock_recv.send(error_msg.encode())
+            sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
             continue
         
-        # no errors, send received message to server and display message
-        sock_recv.send("RECEIVED")
-        print("MESSAGE from " + sendr_name + ": " + message)
+        # no errors, send "received" message to server, and display message
+        sock_recv.send(("RECEIVED " + sender_name + "\n\n").encode())
+        print("MESSAGE from " + sender_name + ": " + user_message)
 
 def main():
     
     # parse command line arguments, exit on error
     flag, username, server_IP = parse_command_line()
+    # check for error
     if not flag:
         sys.exit()
-    # establish TCP connection (on port 5000) with server for sending messages, exit on error
+    
+    # establish TCP connection (on port 8000) with server for sending messages, exit on error
     try:
         sock_send = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_send.connect((server_IP, 8000))
     except:
-        print("Error: Unable to establish connection with the server. Program terminating!")
+        print("Error: Unable to establish connection with the server. Ensure that the IP address provided is correct and try again later.")
         sys.exit()
-    print("Hello")
-    # # connection established, register user
+
+    # connection established, register user
     sock_send.send(("REGISTER TOSEND " + username + "\n\n").encode())
-    ack_send = sock_send.recv(4096)
-    print(ack_send.decode())
-    if ack_send.decode() == "ERROR 100 Malformed username\n\n":
+    # wait for acknowledgment from server
+    ack_message = sock_send.recv(4096)
+    if ack_message.decode() == "ERROR 100 Malformed username\n\n":
         # username is not valid
         print("Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
         close_connection(sock_send)
         sys.exit()
-    elif ack_send.decode() != "REGISTERED TOSEND " + username + "\n\n":
+    elif ack_message.decode() != "REGISTERED TOSEND " + username + "\n\n":
         # registration was unsuccessful
         print("Error: Registration was unsuccessful. Please try again later.")
         close_connection(sock_send)
         sys.exit()
     # registration successful (for sending)
 
-    # establish TCP connection (on port 5000) with server for receiving messages, exit on error
+    # establish TCP connection (on port 8000) with server for receiving messages, exit on error
     try:
         sock_recv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_recv.connect((server_IP, 8000))
     except:
-        print("Error: Unable to establish connection with the server. Program terminating!")
+        print("Error: Unable to establish connection with the server. Ensure that the IP address provided is correct and try again later.")
         sys.exit()
 
     # connection established, register user
     sock_recv.send(("REGISTER TORECV " + username + "\n\n").encode())
-    ack_recv = sock_recv.recv(4096)
-    if ack_recv.decode() == "ERROR 100 Malformed username\n\n":
+    # wait for acknowledgment from server
+    ack_message = sock_recv.recv(4096)
+    if ack_message.decode() == "ERROR 100 Malformed username\n\n":
         # username is not valid
         print("Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
         close_connection(sock_send, sock_recv)
         sys.exit()
-    elif ack_recv.decode() != "REGISTERED TORECV " + username + "\n\n":
+    elif ack_message.decode() != "REGISTERED TORECV " + username + "\n\n":
         # registration was unsuccessful
         print("Error: Registration was unsuccessful. Please try again later.")
         close_connection(sock_send, sock_recv)
