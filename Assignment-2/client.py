@@ -71,12 +71,13 @@ def send_message(sock_send):
                 recp_name = recp_name + chat_message[i]
         
         # send message to server
-        content_length = len(message.decode())
+        content_length = len(message.encode())
         msg_packet = "SEND " + recp_name + "\nContent-length: " + str(content_length) + "\n\n" + message
         sock_send.send(msg_packet.encode())
         
         # wait for reply from server
         ack_send = sock_send.recv(4096)
+        print(ack_send.decode())
         if ack_send.decode() == "SENT " + recp_name + "\n\n":
             print("SRVR: Message delivered to recipient successfully!")
             continue
@@ -101,7 +102,7 @@ def recv_message(sock_recv):
         # wait for FORWARDED messages from server
         forwarded_message = sock_recv.recv(4096)
         msg_packet = forwarded_message.decode()
-
+        print(msg_packet)
         # parse the packet to extract sender and message
         sendr_name = ""
         message = ""
@@ -137,8 +138,9 @@ def recv_message(sock_recv):
             error_msg = "ERROR 103 Header Incomplete\n\n"
             sock_recv.send(error_msg.encode())
             continue
-    
-        # no errors, display message to user
+        
+        # no errors, send received message to server and display message
+        sock_recv.send("RECEIVED")
         print("MESSAGE from " + sendr_name + ": " + message)
 
 def main():
@@ -147,7 +149,6 @@ def main():
     flag, username, server_IP = parse_command_line()
     if not flag:
         sys.exit()
-    
     # establish TCP connection (on port 5000) with server for sending messages, exit on error
     try:
         sock_send = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -155,10 +156,11 @@ def main():
     except:
         print("Error: Unable to establish connection with the server. Program terminating!")
         sys.exit()
-        
-    # connection established, register user
+    print("Hello")
+    # # connection established, register user
     sock_send.send(("REGISTER TOSEND " + username + "\n\n").encode())
     ack_send = sock_send.recv(4096)
+    print(ack_send.decode())
     if ack_send.decode() == "ERROR 100 Malformed username\n\n":
         # username is not valid
         print("Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
@@ -174,7 +176,7 @@ def main():
     # establish TCP connection (on port 5000) with server for receiving messages, exit on error
     try:
         sock_recv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock_recv.connect((server_IP, 5000))
+        sock_recv.connect((server_IP, 8000))
     except:
         print("Error: Unable to establish connection with the server. Program terminating!")
         sys.exit()
@@ -199,8 +201,8 @@ def main():
 
     # create threads for client-side sending and receiving respectively
     try:
-        thread_send = threading.Thread(target=send_message, args=(sock_send))
-        thread_recv = threading.Thread(target=recv_message, args=(sock_recv))
+        thread_send = threading.Thread(target=send_message, args=(sock_send,))
+        thread_recv = threading.Thread(target=recv_message, args=(sock_recv,))
     except:
         print("Error: There was an issue with multi-threading. Please try again later.")
         close_connection(sock_send, sock_recv)

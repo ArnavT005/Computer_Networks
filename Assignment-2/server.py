@@ -11,7 +11,7 @@ def parse_reg_msg(reg_msg):
     fields = []
     temp = ""
     for i in range(0, len(reg_msg)):
-        if reg_msg[i] == " " or reg_msg[i] == "\n":
+        if reg_msg[i] == " " or reg_msg[i] == "\n" or reg_msg[i] == "\r":
             if temp != "":
                 fields.append(temp)
                 temp = ""
@@ -25,17 +25,20 @@ def parse_packet(msg_packet):
     
     # parse the msg_packet received from server
     fields = []
+    print(msg_packet + " " + str(len(msg_packet)))
     temp = ""
     for i in range(0, len(msg_packet)):
+        print(temp)
         if msg_packet[i] == "\n":
             if temp != "":
                 fields.append(temp)
                 temp = ""
         else:
-            temp = temp + msg_packet
+            temp = temp + msg_packet[i]
     if temp != "":
         fields.append(temp)
-    
+    print(fields)
+    print("HowtoDJKks")
     # return parsed fields
     return fields
 
@@ -44,7 +47,7 @@ def client(sock_clnt, addr_clnt):
     # receive registration message from client
     reg_msg = sock_clnt.recv(4096)
     fields = parse_reg_msg(reg_msg.decode())
-    
+    print(fields)
     error = False
 
     # check validity of message
@@ -74,18 +77,22 @@ def client(sock_clnt, addr_clnt):
                 # send successful registration message back to client
                 sock_clnt.send(("REGISTERED TOSEND " + fields[2] + "\n\n").encode())
                 client_name = fields[2]
+                print(client_name)
                 # receive messages from this client
                 while True:
                     # wait for message from client
                     incoming_message = sock_clnt.recv(4096)
                     if incoming_message == "":
-                        print("hello world")
+                        continue
                     msg_packet = incoming_message.decode()
+                    print(msg_packet)
 
                     # parse the packet to extract recipient name and message
                     recp_name = ""
                     message = ""
                     fields = parse_packet(msg_packet)
+                    print(fields)
+                    print("Hellow")
                     if len(fields) < 3 or len(fields) > 3:
                         # error with header
                         error = True
@@ -106,8 +113,6 @@ def client(sock_clnt, addr_clnt):
                             if temp == "" or not temp.isdigit():
                                 # error with header
                                 error = True
-                            else:
-                                content_length = int(temp)
                         message = fields[2]
                     
                     # check for errors
@@ -151,25 +156,28 @@ def main():
     try:
         sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # # run process on port number 5000
-        # sock_server.bind(('', 5000))
+        # run process on port number 5000
+        sock_server.bind(('', 8000))
     except:
         print("Error: Unable to create server-side socket. Program terminating!")
         sys.exit()
-    
-    # run process on port number 5000
-    sock_server.bind(('127.0.0.1', 8000))
 
     # initialize thread of lists
     thread_client = []
     num_threads = 0
 
     # listen for client connections
-    sock_server.listen(5)
-    
+    try:
+        sock_server.listen(5)
+    except:
+        print("Error: Unable to listen to arriving connections. Server closing down!")
+        sock_server.close()
+        sys.exit()
+
     while True:
         # accept connection
         sock_clnt, addr_clnt = sock_server.accept()
+        print("New connection")
         # create and start a new thread
         try:
             thread_client.append(threading.Thread(target=client, args=(sock_clnt, addr_clnt)))
