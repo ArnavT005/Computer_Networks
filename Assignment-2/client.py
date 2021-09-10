@@ -52,6 +52,7 @@ def send_message(sock_send):
         # check if message is valid
         if chat_message == "" or chat_message[0] != "@":
             # incorrect message format
+            print("Warning: Incorrect format. Use \"@[user]\" to ping a particular member or \"@ALL\" to broadcast message to all members.")
             continue
         
         # valid message, parse data to get recipient name and message
@@ -69,39 +70,89 @@ def send_message(sock_send):
         # send message to server
         content_length = len(message.encode())
         send_message = "SEND " + recp_name + "\nContent-length: " + str(content_length) + "\n\n" + message
-        sock_send.send(send_message.encode())
+        try:
+            sock_send.send(send_message.encode())
+        except:
+            # some error, close thread
+            return
+
+        # receive reply (unicast)
+        if recp_name != "ALL":
+            # wait for reply from server
+            try:
+                ack_message = sock_send.recv(4096)
+            except:
+                # some error, close thread
+                return
+            # decode reply
+            if ack_message.decode() == "SENT " + recp_name + "\n\n":
+                print("SUCCESS: Message delivered to " + recp_name + " successfully!")
+            elif ack_message.decode() == "ERROR 102 Unable to send\n\n":
+                # server was unable to find recipient
+                print("FAILURE: Server was unable to find the recipient. Verify recipient name and please try again.")
+            elif ack_message.decode() == "ERROR 103 Header Incomplete\n\n":
+                # header was not fully specified
+                print("FAILURE: Header information incomplete. Closing connection!")
+                return
+            else:
+                # some unexpected error
+                print("Error: Unexpected response from server. Please try again.")
+            continue
         
-        # wait for reply from server
-        ack_message = sock_send.recv(4096)
-        if ack_message.decode() == "SENT " + recp_name + "\n\n":
-            print("SUCCESS: Message delivered to recipient successfully!")
-            continue
-        elif ack_message.decode() == "ERROR 102 Unable to send\n\n":
-            # server was unable to find recipient
-            print("FAILURE: Server was unable to find the recipient. Verify recipient name and please try again.")
-            continue
-        elif ack_message.decode() == "ERROR 103 Header Incomplete\n\n":
-            # header was not fully specified
-            print("FAILURE: Header information incomplete. Closing connection!")
-            continue
-        else:
-            # some unexpected error
-            print("Error: Unexpected response from server. Closing connection!")
-            continue
-    
+        # else, receive reply (broadcast)
+        while True:
+            # wait for reply from server
+            try:
+                ack_message = sock_send.recv(4096)
+            except:
+                # some error, close thread
+                return
+            # parse reply
+            fields = parse_data(ack_message.decode(), delim='\n')
+            # check response
+            if len(fields) > 1 or len(fields) < 1:
+                # unexpected reply from server
+                print("Error: Unexpected response from server. Please try again.")
+                continue
+            # parse first line
+            fields = parse_data(fields[0])
+            if len(fields) == 2 and fields[0] == "SENT":
+                print("SUCCESS: Message delivered to " + fields[1] + " successfully!")
+            elif ack_message.decode() == "ERROR 102 Unable to send\n\n":
+                # server was unable to find recipient
+                print("FAILURE: Server was unable to find the recipient. Verify recipient name and please try again.")
+            elif ack_message.decode() == "ERROR 103 Header Incomplete\n\n":
+                # header was not fully specified
+                print("FAILURE: Header information incomplete. Closing connection!")
+                return
+            elif ack_message.decode() == "ALL DONE\n\n":
+                # all replies received, break
+                break
+            else:
+                # some unexpected error
+                print("Error: Unexpected response from server. Please try again.")
+
     return
 
 def recv_message(sock_recv):
 
     while True:
         # wait for messages from server
-        incoming_message = sock_recv.recv(4096)
+        try:
+            incoming_message = sock_recv.recv(4096)
+        except:
+            # some error, close thread
+            return
         fields = parse_data(incoming_message.decode(), '\n')
         
         # check if header is complete
         if len(fields) < 3 or len(fields) > 3:
             # error in packet
-            sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
+            try:
+                sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
+            except:
+                # some error, close thread
+                return
             continue
 
         # parse all header lines of message   
@@ -137,13 +188,21 @@ def recv_message(sock_recv):
         # check for error
         if error:
             # send message to server
-            sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
+            try:
+                sock_recv.send(("ERROR 103 Header Incomplete\n\n").encode())
+            except:
+                # some error, close thread
+                return
             continue
         
         # no errors, send "received" message to server, and display message
-        sock_recv.send(("RECEIVED " + sender_name + "\n\n").encode())
         print("MESSAGE from " + sender_name + ": " + user_message)
-
+        try:
+            sock_recv.send(("RECEIVED " + sender_name + "\n\n").encode())
+        except:
+            # some error, close thread
+            return
+        
 def main():
     
     # parse command line arguments, exit on error
@@ -161,9 +220,19 @@ def main():
         sys.exit()
 
     # connection established, register user
-    sock_send.send(("REGISTER TOSEND " + username + "\n\n").encode())
+    try:
+        sock_send.send(("REGISTER TOSEND " + username + "\n\n").encode())
+    except:
+        # some error
+        print("Network Error: Please try again later.")
+        return
     # wait for acknowledgment from server
-    ack_message = sock_send.recv(4096)
+    try:
+        ack_message = sock_send.recv(4096)
+    except:
+        # some error
+        print("Network Error: Please try again later.")
+        return
     if ack_message.decode() == "ERROR 100 Malformed username\n\n":
         # username is not valid
         print("Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
@@ -185,9 +254,19 @@ def main():
         sys.exit()
 
     # connection established, register user
-    sock_recv.send(("REGISTER TORECV " + username + "\n\n").encode())
+    try:
+        sock_recv.send(("REGISTER TORECV " + username + "\n\n").encode())
+    except:
+        # some error
+        print("Network Error: Please try again later.")
+        return
     # wait for acknowledgment from server
-    ack_message = sock_recv.recv(4096)
+    try:
+        ack_message = sock_recv.recv(4096)
+    except:
+        # some error
+        print("Network Error: Please try again later.")
+        return
     if ack_message.decode() == "ERROR 100 Malformed username\n\n":
         # username is not valid
         print("Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
@@ -215,5 +294,6 @@ def main():
     # start threads
     thread_send.start()
     thread_recv.start()
+
 
 main()

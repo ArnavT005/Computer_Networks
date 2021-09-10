@@ -31,6 +31,8 @@ def client(sock_clnt, addr_clnt):
     if len(fields) < 1 or len(fields) > 1:
         # error in packet
         sock_clnt.send(("ERROR 101 No user registered\n\n").encode())
+        # close socket
+        sock_clnt.close()
         return
 
     # get words from parsed string
@@ -38,18 +40,24 @@ def client(sock_clnt, addr_clnt):
     if len(fields) < 3 or len(fields) > 3:
         # error in packet
         sock_clnt.send(("ERROR 101 No user registered\n\n").encode())
+        # close socket
+        sock_clnt.close()
         return
 
     # check if it is a send or a receive message
     if fields[0] != "REGISTER" or (fields[1] != "TOSEND" and fields[1] != "TORECV"):
         # error in packet
         sock_clnt.send(("ERROR 101 No user registered\n\n").encode())
+        # close socket
+        sock_clnt.close()
         return
 
     # check username
     if not fields[2].isalnum():
         # invalid username, send error message
         sock_clnt.send(("ERROR 100 Malformed username\n\n").encode())
+        # close socket
+        sock_clnt.close()
         # close thread
         return
 
@@ -78,7 +86,13 @@ def client(sock_clnt, addr_clnt):
         if len(fields) < 3 or len(fields) > 3:
             # error in packet
             sock_clnt.send(("ERROR 103 Header Incomplete\n\n").encode())
-            continue
+            # close sockets (sender and receiver)
+            sock_clnt.close()
+            socket_table[client_name].close()
+            # remove user from hash table
+            del socket_table[client_name]
+            # close thread
+            return
 
         # parse all header lines of message   
         first_line = parse_data(fields[0])
@@ -114,7 +128,13 @@ def client(sock_clnt, addr_clnt):
         if error:
             # send message to client
             sock_clnt.send(("ERROR 103 Header Incomplete\n\n").encode())
-            continue
+            # close sockets (sender and receiver)
+            sock_clnt.close()
+            socket_table[client_name].close()
+            # remove user from hash table
+            del socket_table[client_name]
+            # close thread
+            return
 
         # no header errors, send message to recipient(s)
         forward_message = "FORWARD " + client_name + "\n" + second_line[0] + " " + str(content_length) + "\n\n" + user_message
@@ -127,16 +147,55 @@ def client(sock_clnt, addr_clnt):
             if reply.decode() == "ERROR 103 Header Incomplete\n\n":
                 # forward this reply to sender
                 sock_clnt.send(reply)
+                # close sockets (sender and receiver)
+                sock_clnt.close()
+                socket_table[client_name].close()
+                # remove user from hash table
+                del socket_table[client_name]
+                # close thread
+                return
             elif reply.decode() == "RECEIVED " + client_name + "\n\n":
                 # message delivered successfully, send SENT message to sender
                 success_message = "SENT " + recp_name + "\n\n" 
                 sock_clnt.send(success_message.encode())    
             else:
                 # some other error, send error message
-                sock_clnt.send(("ERROR 103 Header Incomplete\n\n").encode())               
+                sock_clnt.send(("ERROR 105 Unexpected\n\n").encode())
+
         else:
-            # client does not exist, send error message back to sender
-            sock_clnt.send(("ERROR 102 Unable to send\n\n").encode())
+            if recp_name == "ALL":
+                # message is supposed to be broadcasted
+                for user in socket_table.keys():
+                    if user == client_name:
+                        # skip ownself
+                        continue
+                    # forward message to "user"
+                    socket_table[user].send(forward_message.encode())
+                    # wait for reply from "user"
+                    reply = socket_table[user].recv(4096)
+                    # check for error
+                    if reply.decode() == "ERROR 103 Header Incomplete\n\n":
+                        # forward this reply to sender
+                        sock_clnt.send(reply)
+                        # close sockets (sender and receiver)
+                        sock_clnt.close()
+                        socket_table[client_name].close()
+                        # remove user from hash table
+                        del socket_table[client_name]
+                        # close thread
+                        return
+                    elif reply.decode() == "RECEIVED " + client_name + "\n\n":
+                        # message delivered successfully, send SENT message to sender
+                        success_message = "SENT " + user + "\n\n" 
+                        sock_clnt.send(success_message.encode())    
+                    else:
+                        # some other error, send error message
+                        sock_clnt.send(("ERROR 105 Unexpected\n\n").encode())  
+                # all done, notify sender
+                sock_clnt.send(("ALL DONE\n\n").encode())
+            else:
+                # client does not exist, send error message back to sender
+                sock_clnt.send(("ERROR 102 Unable to send\n\n").encode())
 
     return
 
