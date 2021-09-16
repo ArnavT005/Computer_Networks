@@ -33,13 +33,14 @@ def broadcast(sock_frwd, forward_message, client_name, recp_name, responses):
         return
     # wait for reply from "user"
     try:
-        reply = sock_frwd.recv(4096)
+        reply = sock_frwd.recv(2048)
     except:
         # client probably closed socket
         print("Client Error: Client Socket closed.")
         # close corresponding socket, delete entry from table
         del socket_table[recp_name]
         sock_frwd.close()
+        responses.append(False)
         return
     # check for error
     if reply.decode() != "RECEIVED " + client_name + "\n\n":
@@ -54,7 +55,7 @@ def client(sock_clnt, addr_clnt):
     
     # receive registration message from client
     try:
-        registration_message = sock_clnt.recv(4096)
+        registration_message = sock_clnt.recv(2048)
         fields = parse_data(registration_message.decode(), '\n')
     except:
         # client probably closed socket
@@ -136,7 +137,7 @@ def client(sock_clnt, addr_clnt):
     while True:
         # wait for message from client
         try:
-            incoming_message = sock_clnt.recv(4096)
+            incoming_message = sock_clnt.recv(2048)
             fields = parse_data(incoming_message.decode(), '\n')
         except:
             # client probably closed socket
@@ -148,7 +149,7 @@ def client(sock_clnt, addr_clnt):
                 del socket_table[client_name]
                 sock.close()
             return
-
+            
         # check if header is complete
         if len(fields) < 4 or len(fields) > 4 or fields[2] != "":
             # error in packet
@@ -217,38 +218,42 @@ def client(sock_clnt, addr_clnt):
                 # forward message to recipient
                 socket_table[recp_name].sendall(forward_message.encode())
                 # wait for reply from recipient
-                reply = socket_table[recp_name].recv(4096)
+                reply = socket_table[recp_name].recv(2048)
             except:
                 # client probably closed socket
                 print("Client Error: Client Socket closed.")
                 sock = socket_table[recp_name]
                 del socket_table[recp_name]
                 sock.close()
+                # send error back to client
                 try:
                     sock_clnt.sendall(("ERROR 104 Unexpected\n\n").encode())
                 except:
                     # client probably closed socket
                     print("Client Error: Client Socket closed.")
                     sock_clnt.close()
+                    if client_name in socket_table.keys():
+                        sock = socket_table[client_name]
+                        del socket_table[client_name]
+                        sock.close()
                     return
                 continue
 
             # check for error
             if reply.decode() == "ERROR 103 Header Incomplete\n\n":
-                # forward this reply to sender
+                # unexpected error, forward ERROR 104 to sender
                 try:
-                    sock_clnt.sendall(reply)
+                    sock_clnt.sendall(("ERROR 104 Unexpected\n\n").encode())
                 except:
                     # client probably closed socket
                     print("Client Error: Client Socket closed.")
-                # close sockets (sender and receiver)
-                sock_clnt.close()
-                if client_name in socket_table.keys():
-                    sock = socket_table[client_name]
-                    del socket_table[client_name]
-                    sock.close()
-                # close thread
-                return
+                    sock_clnt.close()
+                    if client_name in socket_table.keys():
+                        sock = socket_table[client_name]
+                        del socket_table[client_name]
+                        sock.close()
+                    return
+
             elif reply.decode() == "RECEIVED " + client_name + "\n\n":
                 # message delivered successfully, send SENT message to sender
                 success_message = "SENT " + recp_name + "\n\n" 
@@ -347,7 +352,7 @@ def main():
     # create server side socket
     try:
         sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # reuse socket, do not wait for socket expiration (needed when rerunning server multiple times)
+        # reuse socket, do not wait for socket expiration (needed when re-running server multiple times)
         sock_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         # run process on port number 8000
         sock_server.bind(('', 8000))

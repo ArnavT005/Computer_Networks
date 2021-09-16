@@ -65,13 +65,15 @@ def send_message(sock_send):
             sock_send.sendall(send_message.encode())
         except:
             # some error, close thread
+            print("Network Error: Unable to send message. Please try again.")
             return
 
         # wait for reply from server
         try:
-            ack_message = sock_send.recv(4096)
+            ack_message = sock_send.recv(2048)
         except:
             # some error, close thread
+            print("Network Error: Unable to send message. Please try again.")
             return
         
         # check response
@@ -88,7 +90,7 @@ def send_message(sock_send):
         elif ack_message.decode() == "SENT " + recp_name + "\n\n":
             print("SUCCESS: Message delivered to " + recp_name + " successfully!")
         else:
-            # some unexpected error
+            # some unexpected error (ERROR 104)
             print("Error: Unexpected response from user. Please try again.")
 
 def recv_message(sock_recv):
@@ -96,7 +98,7 @@ def recv_message(sock_recv):
     while True:
         # wait for messages from server
         try:
-            incoming_message = sock_recv.recv(4096)
+            incoming_message = sock_recv.recv(2048)
         except:
             # some error, close thread
             return
@@ -151,7 +153,6 @@ def recv_message(sock_recv):
             except:
                 # some error, close thread
                 return
-            
             continue
         
         # no errors, send "received" message to server, and display message
@@ -190,7 +191,7 @@ def main():
     
     # wait for acknowledgment from server
     try:
-        ack_message = sock_send.recv(4096)
+        ack_message = sock_send.recv(2048)
     except:
         # some error
         print("Network Error: Please try again later.")
@@ -203,9 +204,14 @@ def main():
         print("Name Error: Illegal username provided. Only alphanumeric characters are allowed! (NO SPACES)")
         sock_send.close()
         return
-    elif ack_message.decode() != "REGISTERED TOSEND " + username + "\n\n":
+    elif ack_message.decode() == "ERROR 101 No user registered\n\n":
         # registration was unsuccessful
         print("Server Error: You need to be registered before sending any other messages. Please try again.")
+        sock_send.close()
+        return
+    elif ack_message.decode() != "REGISTERED TOSEND " + username + "\n\n":
+        # unexpected response, close connection
+        print("Error: Unexpected response from user. Please try again.")
         sock_send.close()
         return
     
@@ -232,7 +238,7 @@ def main():
 
     # wait for acknowledgment from server
     try:
-        ack_message = sock_recv.recv(4096)
+        ack_message = sock_recv.recv(2048)
     except:
         # some error
         print("Network Error: Please try again later.")
@@ -247,9 +253,15 @@ def main():
         sock_send.close()
         sock_recv.close()
         return
-    elif ack_message.decode() != "REGISTERED TORECV " + username + "\n\n":
+    elif ack_message.decode() == "ERROR 101 No user registered\n\n":
         # registration was unsuccessful
         print("Server Error: You need to be registered before sending any other messages. Please try again.")
+        sock_send.close()
+        sock_recv.close()
+        return
+    elif ack_message.decode() != "REGISTERED TORECV " + username + "\n\n":
+        # unexpected response, close connection
+        print("Error: Unexpected response from user. Please try again.")
         sock_send.close()
         sock_recv.close()
         return
@@ -282,6 +294,7 @@ def main():
     sock_recv.close()
 
     print("\nConnection closed. If this was unexpected, then there may have been some error. Please try again in that case.")
+
 
 # run driver
 main()
