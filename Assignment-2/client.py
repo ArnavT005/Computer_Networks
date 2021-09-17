@@ -221,7 +221,7 @@ def main():
         return
     elif ack_message.decode() != "REGISTERED TOSEND " + username + "\n\n":
         # unexpected response, close connection
-        print("Error: Unexpected response from user. Please try again.")
+        print("Error: Unexpected response from server. Please try again.")
         sock_send.close()
         return
     
@@ -271,7 +271,7 @@ def main():
         return
     elif ack_message.decode() != "REGISTERED TORECV " + username + "\n\n":
         # unexpected response, close connection
-        print("Error: Unexpected response from user. Please try again.")
+        print("Error: Unexpected response from server. Please try again.")
         sock_send.close()
         sock_recv.close()
         return
