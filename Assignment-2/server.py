@@ -354,8 +354,8 @@ def main():
         sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # reuse socket, do not wait for socket expiration (needed when re-running server multiple times)
         sock_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # run process on port number 8000
-        sock_server.bind(('', 8000))
+        # run process on port number 8000 (localhost)
+        sock_server.bind(('127.0.0.1', 8000))
     except:
         print("Error: Unable to create server-side socket. Program terminating!")
         return

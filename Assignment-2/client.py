@@ -58,6 +58,16 @@ def send_message(sock_send):
             else:
                 recp_name = recp_name + chat_message[i]
         
+        # check if any field is empty
+        if recp_name == "":
+            print("Warning: No username specified. Please try again.")
+            continue
+
+        # check if message is empty
+        if message == "":
+            print("Warning: Empty message. Please try again.")
+            continue
+
         # send message to server
         content_length = len(message.encode())
         send_message = "SEND " + recp_name + "\nContent-length: " + str(content_length) + "\n\n" + message
