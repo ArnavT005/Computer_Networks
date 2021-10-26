@@ -170,16 +170,14 @@ int main(int argc, char** argv) {
 	Ptr<RateErrorModel> errorModel13 = CreateObject<RateErrorModel>(), errorModel23 = CreateObject<RateErrorModel>();
 	errorModel13->SetRate(double(0.00001));
 	errorModel23->SetRate(double(0.00001));
-	// // set model on both receiving devices
-	// netDevices13.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel13));
-	// netDevices23.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel23));
+	// set model on both receiving devices
+	netDevices13.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel13));
+	netDevices23.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel23));
 
 	// install default protocol stacks on all nodes
 	InternetStackHelper internetStack;
 	internetStack.Install(nodes);
-	// set model on both receiving devices
-	netDevices13.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel13));
-	netDevices23.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(errorModel23));
+	
 	// NETWORK-LAYER
 
 	// assign IP addresses (both networks are capable of at most 2 nodes)

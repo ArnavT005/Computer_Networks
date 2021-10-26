@@ -12,7 +12,6 @@ class MyApp : public Application {
 	public:
   		MyApp();
   		virtual ~MyApp();
-
 	    static TypeId GetTypeId(void);
   		void Setup(Ptr<Socket> socket, Address address, uint32_t packetSize, DataRate dataRate);
   		uint32_t m_packetsSent;
@@ -104,7 +103,6 @@ static void RxDrop(int* dropCount, Ptr<const Packet> p) {
 	// increment packet drop count
 	(*dropCount) ++;
 }
-
 
 int main(int argc, char** argv) {
 	// default channel and application data rate (in Mbps)

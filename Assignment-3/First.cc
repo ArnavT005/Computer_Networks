@@ -97,14 +97,11 @@ void MyApp::ScheduleTx(void) {
 static void CwndChange(std::fstream* file, uint32_t oldCwnd, uint32_t newCwnd) {
 	// write data (time and window size) to file
 	*file << Simulator::Now().GetSeconds() << "," << oldCwnd << "," << newCwnd << std::endl;
-		// std::cout << Simulator::Now().GetSeconds() << "," << oldCwnd << "," << newCwnd << std::endl;
-
 }
 
 static void RxDrop(int* dropCount, Ptr<const Packet> p) {
 	// increment packet drop count
 	(*dropCount) ++;
-	// std::cout << "drop" << std::endl;
 }
 
 int main(int argc, char** argv) {
